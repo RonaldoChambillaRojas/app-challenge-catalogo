@@ -3,9 +3,8 @@ export interface ProductListItem {
   idProducto: number;
   nombre: string;
   familiaProducto: string;
-  precio: number | string;
+  precio: number;
   foto: string | null;
-  // Nuevos campos
   fotoUrl?: string | null;
   fotoThumbnail?: string | null;
   fotoMedium?: string | null;
@@ -37,4 +36,21 @@ export interface PaginationMeta {
 export interface PaginatedProductsResponse {
   data: ProductListItem[]; // Los productos
   meta: PaginationMeta; // Metadata de paginación
+}
+
+// Interfaz para resultado de búsqueda de imágenes
+export interface ImageSearchResult {
+  images: string[]; // URLs de las imágenes encontradas
+  count: number; // Cantidad de imágenes
+  searchTerm: string; // Término buscado
+}
+
+// Interfaz para resultado de descarga de imagen
+export interface ImageDownloadResult {
+  message: string;
+  filename: string;
+  url: string;
+  thumbnailUrl: string;
+  mediumUrl: string;
+  originalUrl: string;
 }
