@@ -15,6 +15,9 @@ import type{
   GeneratedCode,
 } from './interfaces/catalog.interfaces';
 import { ImageProcessingService } from './services/image-processing.service';
+import { SubFamiliaProducto } from './entities';
+import { CreateProductDto } from './dto/create-product.dto';
+import { UpdateProductDto } from './dto/update-product.dto';
 
 @Injectable()
 export class CatalogService {
@@ -24,7 +27,110 @@ export class CatalogService {
     @InjectRepository(FamiliaProducto)
     private readonly familiaProductoRepository: Repository<FamiliaProducto>,
     private readonly imageProcessingService: ImageProcessingService,
+    @InjectRepository(SubFamiliaProducto)
+    private readonly subFamiliaProductoRepository: Repository<SubFamiliaProducto>,
   ) {}
+
+
+
+  async createProduct(createProductDto: CreateProductDto): Promise<void> {
+  // 1. Buscar la familia por ID (ya que envías un número)
+  const familia = await this.familiaProductoRepository.findOne({
+    where: { idFamiliaProducto: createProductDto.FamiliaProducto } 
+  });
+
+  if (!familia) {
+    throw new NotFoundException('Familia de producto no encontrada');
+  }
+
+  // 2. Buscar o crear una subfamilia "NO ESPECIFICADO" para esta familia
+  let subFamilia = await this.subFamiliaProductoRepository.findOne({
+    where: { 
+      idFamiliaProducto: familia.idFamiliaProducto,
+      nombreSubFamiliaProducto: 'NO ESPECIFICADO'
+    }
+  });
+
+  // Si no existe, crearla
+  if (!subFamilia) {
+    subFamilia = this.subFamiliaProductoRepository.create({
+      nombreSubFamiliaProducto: 'NO ESPECIFICADO',
+      idFamiliaProducto: familia.idFamiliaProducto,
+      noEspecificado: 'S',
+      indicadorEstado: 'A',
+      usuarioRegistro: 'ADMIN'
+    });
+    await this.subFamiliaProductoRepository.save(subFamilia);
+  }
+
+  // 3. Crear el producto con la subfamilia encontrada/creada
+  const nuevoProducto = this.productoRepository.create({
+    codigoMercaderia: createProductDto.codigoMercaderia,
+    nombreProducto: createProductDto.nombre,
+    precioUnitario: createProductDto.precio,
+    foto: createProductDto.foto,
+    idSubFamiliaProducto: subFamilia.idSubFamiliaProducto,
+  });
+
+  await this.productoRepository.save(nuevoProducto);
+}
+
+
+
+async updateProduct(id: number, updateProductDto: UpdateProductDto): Promise<void> {
+  // 1. Verificar que el producto existe
+  const producto = await this.productoRepository.findOne({
+    where: { idProducto: id }
+  });
+
+  if (!producto) {
+    throw new NotFoundException('Producto no encontrado');
+  }
+
+  // 2. Si se envía una nueva familia, buscar/crear subfamilia "NO ESPECIFICADO"
+  let idSubFamiliaProducto = producto.idSubFamiliaProducto; // Mantener el actual por defecto
+
+  if (updateProductDto.FamiliaProducto) {
+    const familia = await this.familiaProductoRepository.findOne({
+      where: { idFamiliaProducto: updateProductDto.FamiliaProducto }
+    });
+
+    if (!familia) {
+      throw new NotFoundException('Familia de producto no encontrada');
+    }
+
+    // Buscar o crear subfamilia "NO ESPECIFICADO" para esta familia
+    let subFamilia = await this.subFamiliaProductoRepository.findOne({
+      where: { 
+        idFamiliaProducto: familia.idFamiliaProducto,
+        nombreSubFamiliaProducto: 'NO ESPECIFICADO'
+      }
+    });
+
+    if (!subFamilia) {
+      subFamilia = this.subFamiliaProductoRepository.create({
+        nombreSubFamiliaProducto: 'NO ESPECIFICADO',
+        idFamiliaProducto: familia.idFamiliaProducto,
+        noEspecificado: 'S',
+        indicadorEstado: 'A',
+        usuarioRegistro: 'ADMIN'
+      });
+      await this.subFamiliaProductoRepository.save(subFamilia);
+    }
+
+    idSubFamiliaProducto = subFamilia.idSubFamiliaProducto;
+  }
+
+  // 3. Actualizar el producto
+  await this.productoRepository.update(id, {
+    nombreProducto: updateProductDto.nombre || producto.nombreProducto,
+    precioUnitario: updateProductDto.precio || producto.precioUnitario,
+    foto: updateProductDto.foto || producto.foto,
+    idSubFamiliaProducto: idSubFamiliaProducto,
+    usuarioModificacion: 'ADMIN', // O el usuario actual
+    fechaModificacion: new Date(),
+  });
+}
 
   /**
    * Obtener productos por categoría (familia)
