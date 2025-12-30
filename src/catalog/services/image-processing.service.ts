@@ -121,4 +121,70 @@ export class ImageProcessingService {
     const filePath = this.getImagePath(filename, size);
     return fs.existsSync(filePath);
   }
+
+  /**
+   * Procesar y guardar imagen desde Buffer (para URLs descargadas)
+   * @param imageBuffer - Buffer de la imagen
+   * @param productId - ID del producto
+   * @returns nombre del archivo guardado
+   */
+  async processAndSaveImageFromBuffer(
+    imageBuffer: Buffer,
+    productId: number,
+  ): Promise<string> {
+    // Validar tamaño (máximo 10MB para imágenes de internet)
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    if (imageBuffer.length > maxSize) {
+      throw new BadRequestException(
+        'La imagen es demasiado grande. Máximo 10MB',
+      );
+    }
+
+    // Generar nombre único
+    const timestamp = Date.now();
+    const filename = `producto-${productId}-${timestamp}.webp`;
+
+    try {
+      // 1. Thumbnail (200x200)
+      await sharp(imageBuffer)
+        .resize(200, 200, {
+          fit: 'cover',
+          position: 'center',
+        })
+        .webp({ quality: 80 })
+        .toFile(path.join(this.uploadPath, 'thumbnails', filename));
+
+      // 2. Medium (800x600)
+      await sharp(imageBuffer)
+        .resize(800, 600, {
+          fit: 'inside',
+          withoutEnlargement: true,
+        })
+        .webp({ quality: 85 })
+        .toFile(path.join(this.uploadPath, 'medium', filename));
+
+      // 3. Original optimizado
+      const metadata = await sharp(imageBuffer).metadata();
+      let resizeOptions = {};
+
+      if (metadata.width > 1920 || metadata.height > 1920) {
+        resizeOptions = {
+          width: 1920,
+          height: 1920,
+          fit: 'inside',
+        };
+      }
+
+      await sharp(imageBuffer)
+        .resize(resizeOptions)
+        .webp({ quality: 90 })
+        .toFile(path.join(this.uploadPath, 'original', filename));
+
+      return filename;
+    } catch (error) {
+      throw new BadRequestException(
+        `Error al procesar la imagen: ${error.message}`,
+      );
+    }
+  }
 }
