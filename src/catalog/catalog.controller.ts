@@ -23,6 +23,7 @@ import {
   ProductListItem,
   FamilyProducts,
   GeneratedCode,
+  PaginatedProductsResponse,
 } from './interfaces/catalog.interfaces';
 import { ImageValidationInterceptor } from './interceptors/image-validation.interceptor';
 import { ImageProcessingService } from './services/image-processing.service';
@@ -36,24 +37,34 @@ export class CatalogController {
     private readonly imageProcessingService: ImageProcessingService,
   ) {}
 
-  // ===== NUEVOS ENDPOINTS =====
+  // ===== ENDPOINTS DE PRODUCTOS =====
 
   /**
    * GET /catalog/products
-   * Obtener productos, opcionalmente filtrados por categoría
-   * Query param: idFamiliaProducto (opcional)
+   * Obtener productos con paginación, opcionalmente filtrados por categoría
+   * Query params:
+   * - idFamiliaProducto (opcional): Filtrar por familia
+   * - page (opcional, default: 1): Número de página
+   * - limit (opcional, default: 10): Cantidad de items por página
    */
   @Get('products')
   async getProductsByCategory(
     @Query() query: GetProductsByCategoryDto,
-  ): Promise<ProductListItem[]> {
+  ): Promise<PaginatedProductsResponse> {
     const idFamilia = query.idFamiliaProducto
       ? parseInt(query.idFamiliaProducto, 10)
       : undefined;
-    return this.catalogService.getProductsByCategory(idFamilia);
+    
+    const page = query.page || 1;
+    const limit = query.limit || 10;
+
+    return this.catalogService.getProductsByCategory(idFamilia, page, limit);
   }
 
-
+  /**
+   * POST /catalog/product
+   * Crear un nuevo producto
+   */
   @Post('product')
   async createProduct(
     @Body() createProductDto: CreateProductDto,
@@ -61,7 +72,10 @@ export class CatalogController {
     return this.catalogService.createProduct(createProductDto);
   }
 
-
+  /**
+   * PATCH /catalog/product/:id
+   * Actualizar un producto existente
+   */
   @Patch('product/:id')
   async updateProduct(
     @Param('id', ParseIntPipe) id: number,
@@ -91,6 +105,7 @@ export class CatalogController {
   async generateProductCode(): Promise<GeneratedCode> {
     return this.catalogService.generateProductCode();
   }
+
   // ===== ENDPOINTS DE IMÁGENES =====
 
   /**
