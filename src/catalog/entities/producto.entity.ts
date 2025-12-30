@@ -57,11 +57,6 @@ export class Producto {
   @Column({ name: 'IdSubFamiliaProducto', type: 'int' })
   idSubFamiliaProducto: number;
 
-  @Column({ name: 'IdModelo', type: 'int' })
-  idModelo: number;
-
-  @Column({ name: 'IdLineaProducto', type: 'int' })
-  idLineaProducto: number;
 
   // IDs que no tienen tablas relacionadas (solo se guardan como enteros)
   @Column({ name: 'IdProveedor', type: 'int', default: 0 })
@@ -157,7 +152,7 @@ export class Producto {
   referencia: string;
 
   @Column({ name: 'Foto', type: 'varchar', length: 250, nullable: true })
-  foto: string;
+  foto: string | null;
 
   @Column({ name: 'Ano', type: 'int', nullable: true })
   ano: number;
@@ -209,11 +204,15 @@ export class Producto {
   @JoinColumn({ name: 'IdSubFamiliaProducto' })
   subFamiliaProducto: SubFamiliaProducto;
 
-  @ManyToOne(() => Modelo, (modelo) => modelo.productos)
+  @ManyToOne(() => Modelo, (modelo) => modelo.productos,{
+    nullable: true,
+  })
   @JoinColumn({ name: 'IdModelo' })
-  modelo: Modelo;
+  modelo: Modelo | null;
 
-  @ManyToOne(() => LineaProducto, (linea) => linea.productos)
+  @ManyToOne(() => LineaProducto, (linea) => linea.productos,{
+    nullable: true,
+  })
   @JoinColumn({ name: 'IdLineaProducto' })
   lineaProducto: LineaProducto;
 }
