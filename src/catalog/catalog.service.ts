@@ -13,6 +13,8 @@ import type{
   ProductListItem,
   FamilyProducts,
   GeneratedCode,
+  PaginatedProductsResponse,
+  PaginationMeta,
 } from './interfaces/catalog.interfaces';
 import { ImageProcessingService } from './services/image-processing.service';
 import { SubFamiliaProducto } from './entities';
@@ -133,12 +135,17 @@ async updateProduct(id: number, updateProductDto: UpdateProductDto): Promise<voi
 }
 
   /**
-   * Obtener productos por categoría (familia)
-   * Si no se envía idFamiliaProducto, devuelve todos los productos
+   * Obtener productos por categoría (familia) con paginación
+   * @param idFamiliaProducto - ID de la familia (opcional)
+   * @param page - Número de página (default: 1)
+   * @param limit - Cantidad de items por página (default: 10)
    */
   async getProductsByCategory(
     idFamiliaProducto?: number,
-  ): Promise<ProductListItem[]> {
+    page: number = 1,
+    limit: number = 10,
+  ): Promise<PaginatedProductsResponse> {
+    // Construir el query base
     const queryBuilder = this.productoRepository
       .createQueryBuilder('producto')
       .leftJoinAndSelect('producto.subFamiliaProducto', 'subFamilia')
@@ -153,10 +160,23 @@ async updateProduct(id: number, updateProductDto: UpdateProductDto): Promise<voi
       });
     }
 
+    // Ordenar por ID descendente (los más nuevos primero)
+    queryBuilder.orderBy('producto.idProducto', 'DESC');
+
+    // Obtener el total de registros (antes de paginar)
+    const total = await queryBuilder.getCount();
+
+    // Calcular offset
+    const offset = (page - 1) * limit;
+
+    // Aplicar paginación
+    queryBuilder.skip(offset).take(limit);
+
+    // Ejecutar query
     const productos = await queryBuilder.getMany();
 
     // Mapear a la interfaz de respuesta
-    return productos.map((producto) => ({
+    const data: ProductListItem[] = productos.map((producto) => ({
       idProducto: producto.idProducto,
       nombre: producto.nombreProducto,
       familiaProducto:
@@ -165,6 +185,25 @@ async updateProduct(id: number, updateProductDto: UpdateProductDto): Promise<voi
       precio: producto.precioUnitario || 0,
       foto: producto.foto || null,
     }));
+
+    // Calcular metadata de paginación
+    const totalPages = Math.ceil(total / limit);
+    const hasNextPage = page < totalPages;
+    const hasPreviousPage = page > 1;
+
+    const meta: PaginationMeta = {
+      page,
+      limit,
+      total,
+      totalPages,
+      hasNextPage,
+      hasPreviousPage,
+    };
+
+    return {
+      data,
+      meta,
+    };
   }
 
   /**
