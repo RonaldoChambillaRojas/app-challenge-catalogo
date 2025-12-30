@@ -29,6 +29,7 @@ import { ImageValidationInterceptor } from './interceptors/image-validation.inte
 import { ImageProcessingService } from './services/image-processing.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
+import { OptionalImageValidationInterceptor } from './interceptors/OptionalImageValidation.interceptor';
 
 @Controller('catalog')
 export class CatalogController {
@@ -66,27 +67,37 @@ export class CatalogController {
    * Crear un nuevo producto
    */
   @Post('product')
-  async createProduct(
-    @Body() createProductDto: CreateProductDto,
-  ): Promise<void> {
-    return this.catalogService.createProduct(createProductDto);
-  }
+@UseInterceptors(
+  FileInterceptor('image'), // 'image' es el nombre del campo en el FormData
+  ImageValidationInterceptor
+)
+async createProduct(
+  @Body() createProductDto: CreateProductDto,
+  @UploadedFile() file?: Express.Multer.File, // Opcional porque puede no enviar imagen
+): Promise<{ message: string; producto: any }> {
+  return this.catalogService.createProduct(createProductDto, file);
+}
 
   /**
    * PATCH /catalog/product/:id
    * Actualizar un producto existente
    */
   @Patch('product/:id')
-  async updateProduct(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() updateProductDto: UpdateProductDto,
-  ) {
-    await this.catalogService.updateProduct(id, updateProductDto);
-    return {
-      message: 'Producto actualizado exitosamente',
-      statusCode: 200,
-    };
-  }
+@UseInterceptors(
+  FileInterceptor('image'),
+  OptionalImageValidationInterceptor 
+)
+async updateProduct(
+  @Param('id', ParseIntPipe) id: number,
+  @Body() updateProductDto: UpdateProductDto,
+  @UploadedFile() file?: Express.Multer.File,
+) {
+  await this.catalogService.updateProduct(id, updateProductDto, file);
+  return {
+    message: 'Producto actualizado exitosamente',
+    statusCode: 200,
+  };
+}
 
   /**
    * GET /catalog/families

@@ -35,54 +35,96 @@ export class CatalogService {
 
 
 
-  async createProduct(createProductDto: CreateProductDto): Promise<void> {
-  // 1. Buscar la familia por ID (ya que envías un número)
+  async createProduct(
+  createProductDto: CreateProductDto,
+  file?: Express.Multer.File,
+): Promise<{ message: string; producto: any }> {
+  // 1. Buscar la familia por ID
   const familia = await this.familiaProductoRepository.findOne({
-    where: { idFamiliaProducto: createProductDto.FamiliaProducto } 
+    where: { idFamiliaProducto: createProductDto.FamiliaProducto },
   });
 
   if (!familia) {
     throw new NotFoundException('Familia de producto no encontrada');
   }
 
-  // 2. Buscar o crear una subfamilia "NO ESPECIFICADO" para esta familia
+  // 2. Buscar o crear subfamilia "NO ESPECIFICADO"
   let subFamilia = await this.subFamiliaProductoRepository.findOne({
-    where: { 
+    where: {
       idFamiliaProducto: familia.idFamiliaProducto,
-      nombreSubFamiliaProducto: 'NO ESPECIFICADO'
-    }
+      nombreSubFamiliaProducto: 'NO ESPECIFICADO',
+    },
   });
 
-  // Si no existe, crearla
   if (!subFamilia) {
     subFamilia = this.subFamiliaProductoRepository.create({
       nombreSubFamiliaProducto: 'NO ESPECIFICADO',
       idFamiliaProducto: familia.idFamiliaProducto,
       noEspecificado: 'S',
       indicadorEstado: 'A',
-      usuarioRegistro: 'ADMIN'
+      usuarioRegistro: 'ADMIN',
     });
     await this.subFamiliaProductoRepository.save(subFamilia);
   }
 
-  // 3. Crear el producto con la subfamilia encontrada/creada
+  // 3. Crear el producto (sin imagen por ahora)
   const nuevoProducto = this.productoRepository.create({
     codigoMercaderia: createProductDto.codigoMercaderia,
     nombreProducto: createProductDto.nombre,
     precioUnitario: createProductDto.precio,
-    foto: createProductDto.foto,
     idSubFamiliaProducto: subFamilia.idSubFamiliaProducto,
+    foto: null, // Inicialmente null
   });
 
-  await this.productoRepository.save(nuevoProducto);
+  // Guardar producto para obtener el ID
+  const productoGuardado = await this.productoRepository.save(nuevoProducto);
+
+  // 4. Si se envió una imagen, procesarla y actualizar el producto
+  let filename: string | null = null;
+  if (file) {
+    try {
+      // Procesar y guardar imagen usando el servicio existente
+      filename = await this.imageProcessingService.processAndSaveImage(
+        file,
+        productoGuardado.idProducto,
+      );
+
+      // Actualizar producto con la URL de la imagen
+      await this.productoRepository.update(productoGuardado.idProducto, {
+        foto: filename,
+        usuarioModificacion: 'ADMIN', // Cambia según tu lógica de usuarios
+        fechaModificacion: new Date(),
+      });
+
+      productoGuardado.foto = filename;
+    } catch (error) {
+      // Si falla el procesamiento de imagen, aún así retornamos el producto creado
+      console.error('Error al procesar imagen:', error);
+    }
+  }
+
+  return {
+    message: 'Producto creado exitosamente',
+    producto: {
+      id: productoGuardado.idProducto,
+      codigoMercaderia: productoGuardado.codigoMercaderia,
+      nombre: productoGuardado.nombreProducto,
+      precio: productoGuardado.precioUnitario,
+      foto: filename,
+      fotoUrl: filename ? `/catalog/images/${filename}` : null,
+    },
+  };
 }
 
 
-
-async updateProduct(id: number, updateProductDto: UpdateProductDto): Promise<void> {
+async updateProduct(
+  id: number,
+  updateProductDto: UpdateProductDto,
+  file?: Express.Multer.File,
+): Promise<void> {
   // 1. Verificar que el producto existe
   const producto = await this.productoRepository.findOne({
-    where: { idProducto: id }
+    where: { idProducto: id },
   });
 
   if (!producto) {
@@ -94,7 +136,7 @@ async updateProduct(id: number, updateProductDto: UpdateProductDto): Promise<voi
 
   if (updateProductDto.FamiliaProducto) {
     const familia = await this.familiaProductoRepository.findOne({
-      where: { idFamiliaProducto: updateProductDto.FamiliaProducto }
+      where: { idFamiliaProducto: updateProductDto.FamiliaProducto },
     });
 
     if (!familia) {
@@ -103,10 +145,10 @@ async updateProduct(id: number, updateProductDto: UpdateProductDto): Promise<voi
 
     // Buscar o crear subfamilia "NO ESPECIFICADO" para esta familia
     let subFamilia = await this.subFamiliaProductoRepository.findOne({
-      where: { 
+      where: {
         idFamiliaProducto: familia.idFamiliaProducto,
-        nombreSubFamiliaProducto: 'NO ESPECIFICADO'
-      }
+        nombreSubFamiliaProducto: 'NO ESPECIFICADO',
+      },
     });
 
     if (!subFamilia) {
@@ -115,7 +157,7 @@ async updateProduct(id: number, updateProductDto: UpdateProductDto): Promise<voi
         idFamiliaProducto: familia.idFamiliaProducto,
         noEspecificado: 'S',
         indicadorEstado: 'A',
-        usuarioRegistro: 'ADMIN'
+        usuarioRegistro: 'ADMIN',
       });
       await this.subFamiliaProductoRepository.save(subFamilia);
     }
@@ -123,11 +165,32 @@ async updateProduct(id: number, updateProductDto: UpdateProductDto): Promise<voi
     idSubFamiliaProducto = subFamilia.idSubFamiliaProducto;
   }
 
-  // 3. Actualizar el producto
+  // 3. Manejar la actualización de imagen si se envió una nueva
+  let newFilename = producto.foto; // Mantener la imagen actual por defecto
+
+  if (file) {
+    try {
+      // Si ya tiene una imagen anterior, eliminarla
+      if (producto.foto) {
+        await this.imageProcessingService.deleteImage(producto.foto);
+      }
+
+      // Procesar y guardar la nueva imagen
+      newFilename = await this.imageProcessingService.processAndSaveImage(
+        file,
+        id,
+      );
+    } catch (error) {
+      console.error('Error al procesar imagen:', error);
+      throw new BadRequestException('Error al procesar la imagen');
+    }
+  }
+
+  // 4. Actualizar el producto
   await this.productoRepository.update(id, {
     nombreProducto: updateProductDto.nombre || producto.nombreProducto,
     precioUnitario: updateProductDto.precio || producto.precioUnitario,
-    foto: updateProductDto.foto || producto.foto,
+    foto: newFilename,
     idSubFamiliaProducto: idSubFamiliaProducto,
     usuarioModificacion: 'ADMIN', // O el usuario actual
     fechaModificacion: new Date(),
@@ -184,6 +247,11 @@ async updateProduct(id: number, updateProductDto: UpdateProductDto): Promise<voi
         'Sin categoría',
       precio: producto.precioUnitario || 0,
       foto: producto.foto || null,
+      // Agregar URLs de las imágenes
+      fotoUrl: producto.foto ? `/catalog/images/${producto.foto}` : null,
+      fotoThumbnail: producto.foto ? `/catalog/images/${producto.foto}?size=thumbnails` : null,
+      fotoMedium: producto.foto ? `/catalog/images/${producto.foto}?size=medium` : null,
+      fotoOriginal: producto.foto ? `/catalog/images/${producto.foto}?size=original` : null,
     }));
 
     // Calcular metadata de paginación

@@ -3,8 +3,13 @@ export interface ProductListItem {
   idProducto: number;
   nombre: string;
   familiaProducto: string;
-  precio: number;
+  precio: number | string;
   foto: string | null;
+  // Nuevos campos
+  fotoUrl?: string | null;
+  fotoThumbnail?: string | null;
+  fotoMedium?: string | null;
+  fotoOriginal?: string | null;
 }
 
 // Interfaz para el listado de familias
