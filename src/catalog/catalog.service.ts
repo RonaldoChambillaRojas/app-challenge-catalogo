@@ -1,4 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { 
+  Injectable ,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CreateCatalogDto } from './dto/create-catalog.dto';
@@ -10,6 +14,7 @@ import type{
   FamilyProducts,
   GeneratedCode,
 } from './interfaces/catalog.interfaces';
+import { ImageProcessingService } from './services/image-processing.service';
 
 @Injectable()
 export class CatalogService {
@@ -18,6 +23,7 @@ export class CatalogService {
     private readonly productoRepository: Repository<Producto>,
     @InjectRepository(FamiliaProducto)
     private readonly familiaProductoRepository: Repository<FamiliaProducto>,
+    private readonly imageProcessingService: ImageProcessingService,
   ) {}
 
   /**
@@ -36,7 +42,7 @@ export class CatalogService {
 
     // Si se proporciona el filtro de familia, agregarlo
     if (idFamiliaProducto) {
-      queryBuilder.andWhere('familia.idFamiliaProducto = :idFamilia', {
+      queryBuilder.andWhere('familia.IdFamiliaProducto = :idFamilia', {
         idFamilia: idFamiliaProducto,
       });
     }
@@ -50,7 +56,7 @@ export class CatalogService {
       familiaProducto:
         producto.subFamiliaProducto?.familiaProducto?.nombreFamiliaProducto ||
         'Sin categoría',
-      precio: Number(producto.precioUnitario) || 0,
+      precio: producto.precioUnitario || 0,
       foto: producto.foto || null,
     }));
   }
@@ -105,6 +111,80 @@ export class CatalogService {
 
     return { codigo };
   }
+  /**
+   * Subir imagen de producto
+   * @param productId - ID del producto
+   * @param file - Archivo de imagen
+   */
+  async uploadProductImage(
+    productId: number,
+    file: Express.Multer.File,
+  ): Promise<{ message: string; filename: string; url: string }> {
+    // Verificar que el producto existe
+    const producto = await this.productoRepository.findOne({
+      where: { idProducto: productId },
+    });
 
-  // Métodos que ya tenías (para mantener compatibilidad)
+    if (!producto) {
+      throw new NotFoundException(
+        `Producto con ID ${productId} no encontrado`,
+      );
+    }
+
+    // Si ya tiene una imagen, eliminarla
+    if (producto.foto) {
+      await this.imageProcessingService.deleteImage(producto.foto);
+    }
+
+    // Procesar y guardar nueva imagen
+    const filename = await this.imageProcessingService.processAndSaveImage(
+      file,
+      productId,
+    );
+
+    // Actualizar producto en BD
+    await this.productoRepository.update(productId, {
+      foto: filename,
+      usuarioModificacion: 'SYSTEM', // Puedes cambiarlo por el usuario actual
+      fechaModificacion: new Date(),
+    });
+
+    return {
+      message: 'Imagen subida exitosamente',
+      filename,
+      url: `/catalog/images/${filename}`,
+    };
+  }
+
+  /**
+   * Eliminar imagen de producto
+   * @param productId - ID del producto
+   */
+  async deleteProductImage(productId: number): Promise<{ message: string }> {
+    const producto = await this.productoRepository.findOne({
+      where: { idProducto: productId },
+    });
+
+    if (!producto) {
+      throw new NotFoundException(
+        `Producto con ID ${productId} no encontrado`,
+      );
+    }
+
+    if (!producto.foto) {
+      throw new BadRequestException('El producto no tiene imagen');
+    }
+
+    // Eliminar archivos físicos
+    await this.imageProcessingService.deleteImage(producto.foto);
+
+    // Actualizar BD
+    await this.productoRepository.update(productId, {
+      foto: null,
+      usuarioModificacion: 'SYSTEM',
+      fechaModificacion: new Date(),
+    });
+
+    return { message: 'Imagen eliminada exitosamente' };
+  }
 }
