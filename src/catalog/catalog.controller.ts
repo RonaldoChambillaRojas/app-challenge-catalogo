@@ -30,6 +30,7 @@ import { ImageProcessingService } from './services/image-processing.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { OptionalImageValidationInterceptor } from './interceptors/OptionalImageValidation.interceptor';
+import { SearchProductsDto } from './dto/searchProducts.dto';
 
 @Controller('catalog')
 export class CatalogController {
@@ -39,6 +40,23 @@ export class CatalogController {
   ) {}
 
   // ===== ENDPOINTS DE PRODUCTOS =====
+
+  @Get('products/search')  // Importante: debe ir ANTES de @Get('products')
+async searchProducts(
+  @Query() searchDto: SearchProductsDto,
+): Promise<PaginatedProductsResponse> {
+  const page = searchDto.page || 1;
+  const limit = searchDto.limit || 10;
+  const idFamilia = searchDto.idFamiliaProducto;
+
+  return this.catalogService.searchProducts(
+    searchDto.term,
+    page,
+    limit,
+    idFamilia,
+  );
+}
+
 
   /**
    * GET /catalog/products
@@ -61,6 +79,9 @@ export class CatalogController {
 
     return this.catalogService.getProductsByCategory(idFamilia, page, limit);
   }
+
+
+  
 
   /**
    * POST /catalog/product

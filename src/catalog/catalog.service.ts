@@ -274,6 +274,159 @@ async updateProduct(
     };
   }
 
+
+async searchProducts(
+  term: string,
+  page: number = 1,
+  limit: number = 10,
+  idFamiliaProducto?: number,
+): Promise<PaginatedProductsResponse> {
+  // Si no hay término, retornar vacío
+  if (!term || term.trim() === '') {
+    return {
+      data: [],
+      meta: {
+        page,
+        limit,
+        total: 0,
+        totalPages: 0,
+        hasNextPage: false,
+        hasPreviousPage: false,
+      },
+    };
+  }
+
+  const normalTerm = term.trim();
+  const cleanTerm = normalTerm.replace(/\s+/g, '').toUpperCase();
+
+  // Dividir el término en palabras individuales
+  const words = normalTerm.split(/\s+/).filter((word) => word.length > 0);
+
+  // Construir el query base
+  const queryBuilder = this.productoRepository
+    .createQueryBuilder('producto')
+    .leftJoinAndSelect('producto.subFamiliaProducto', 'subFamilia')
+    .leftJoinAndSelect('subFamilia.familiaProducto', 'familia')
+    .where('producto.estadoProducto = :estado', { estado: '1' })
+    .andWhere('producto.indicadorEstado = :indicador', { indicador: 'A' });
+
+  // Si hay múltiples palabras, buscar cada una
+  if (words.length > 1) {
+    const conditions = words
+      .map((_, index) => {
+        return `(
+          UPPER(producto.nombreProducto) LIKE UPPER(:word${index}) OR
+          UPPER(REPLACE(producto.nombreProducto, ' ', '')) LIKE UPPER(:word${index})
+        )`;
+      })
+      .join(' AND ');
+
+    // Crear objeto de parámetros dinámicamente
+    const params: any = {};
+    words.forEach((word, index) => {
+      params[`word${index}`] = `%${word}%`;
+    });
+
+    queryBuilder.andWhere(
+      `(
+        (${conditions}) OR
+        producto.codigoMercaderia LIKE :normalTerm OR
+        UPPER(familia.nombreFamiliaProducto) LIKE UPPER(:normalTerm)
+      )`,
+      { ...params, normalTerm: `%${normalTerm}%` },
+    );
+  } else {
+    // Si es una sola palabra, buscar en nombre, código y familia
+    queryBuilder.andWhere(
+      `(
+        UPPER(producto.nombreProducto) LIKE UPPER(:normalTerm) OR
+        UPPER(REPLACE(producto.nombreProducto, ' ', '')) LIKE :cleanTerm OR
+        producto.codigoMercaderia LIKE :normalTerm OR
+        UPPER(familia.nombreFamiliaProducto) LIKE UPPER(:normalTerm)
+      )`,
+      {
+        normalTerm: `%${normalTerm}%`,
+        cleanTerm: `%${cleanTerm}%`,
+      },
+    );
+  }
+
+  // Si se proporciona el filtro de familia, agregarlo
+  if (idFamiliaProducto) {
+    queryBuilder.andWhere('familia.IdFamiliaProducto = :idFamilia', {
+      idFamilia: idFamiliaProducto,
+    });
+  }
+
+  // ✅ SOLUCIÓN: Agregar campo calculado para ordenamiento
+  const escapedTerm = normalTerm.replace(/'/g, "''");
+  queryBuilder.addSelect(
+    `CASE 
+      WHEN UPPER(producto.nombreProducto) = UPPER('${escapedTerm}') THEN 1
+      WHEN UPPER(producto.nombreProducto) LIKE UPPER('${escapedTerm}%') THEN 2
+      ELSE 3
+    END`,
+    'relevance'
+  );
+
+  // Ordenar por el campo calculado
+  queryBuilder
+    .orderBy('relevance', 'ASC')
+    .addOrderBy('producto.idProducto', 'DESC');
+
+  // Obtener el total de registros (antes de paginar)
+  const total = await queryBuilder.getCount();
+
+  // Calcular offset
+  const offset = (page - 1) * limit;
+
+  // Aplicar paginación
+  queryBuilder.skip(offset).take(limit);
+
+  // Ejecutar query
+  const productos = await queryBuilder.getMany();
+
+  // Mapear a la interfaz de respuesta
+  const data: ProductListItem[] = productos.map((producto) => ({
+    idProducto: producto.idProducto,
+    nombre: producto.nombreProducto,
+    familiaProducto:
+      producto.subFamiliaProducto?.familiaProducto?.nombreFamiliaProducto ||
+      'Sin categoría',
+    precio: producto.precioUnitario || 0,
+    foto: producto.foto || null,
+    fotoUrl: producto.foto ? `/catalog/images/${producto.foto}` : null,
+    fotoThumbnail: producto.foto
+      ? `/catalog/images/${producto.foto}?size=thumbnails`
+      : null,
+    fotoMedium: producto.foto
+      ? `/catalog/images/${producto.foto}?size=medium`
+      : null,
+    fotoOriginal: producto.foto
+      ? `/catalog/images/${producto.foto}?size=original`
+      : null,
+  }));
+
+  // Calcular metadata de paginación
+  const totalPages = Math.ceil(total / limit);
+  const hasNextPage = page < totalPages;
+  const hasPreviousPage = page > 1;
+
+  const meta: PaginationMeta = {
+    page,
+    limit,
+    total,
+    totalPages,
+    hasNextPage,
+    hasPreviousPage,
+  };
+
+  return {
+    data,
+    meta,
+  };
+}
+
   /**
    * Obtener todas las familias de productos activas
    */
