@@ -7,7 +7,14 @@ import {
   Param,
   Delete,
   Query,
+  UseInterceptors,
+  UploadedFile,
+  Res,
+  NotFoundException,
+  ParseIntPipe,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
 import { CatalogService } from './catalog.service';
 import { CreateCatalogDto } from './dto/create-catalog.dto';
 import { UpdateCatalogDto } from './dto/update-catalog.dto';
@@ -17,10 +24,15 @@ import {
   FamilyProducts,
   GeneratedCode,
 } from './interfaces/catalog.interfaces';
+import { ImageValidationInterceptor } from './interceptors/image-validation.interceptor';
+import { ImageProcessingService } from './services/image-processing.service';
 
 @Controller('catalog')
 export class CatalogController {
-  constructor(private readonly catalogService: CatalogService) {}
+  constructor(
+    private readonly catalogService: CatalogService,
+    private readonly imageProcessingService: ImageProcessingService,
+  ) {}
 
   // ===== NUEVOS ENDPOINTS =====
 
@@ -56,6 +68,55 @@ export class CatalogController {
   async generateProductCode(): Promise<GeneratedCode> {
     return this.catalogService.generateProductCode();
   }
+  // ===== ENDPOINTS DE IMÁGENES =====
 
-  // ===== ENDPOINTS ORIGINALES (para mantener) =====
+  /**
+   * POST /catalog/products/:id/image
+   * Subir imagen para un producto
+   */
+  @Post('products/:id/image')
+  @UseInterceptors(FileInterceptor('image'), ImageValidationInterceptor)
+  async uploadProductImage(
+    @Param('id', ParseIntPipe) id: number,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.catalogService.uploadProductImage(id, file);
+  }
+
+  /**
+   * DELETE /catalog/products/:id/image
+   * Eliminar imagen de un producto
+   */
+  @Delete('products/:id/image')
+  async deleteProductImage(@Param('id', ParseIntPipe) id: number) {
+    return this.catalogService.deleteProductImage(id);
+  }
+
+  /**
+   * GET /catalog/images/:filename
+   * Servir imagen (por defecto tamaño medium)
+   * Query params:
+   * - size: thumbnails | medium | original (default: medium)
+   */
+  @Get('images/:filename')
+  async serveImage(
+    @Param('filename') filename: string,
+    @Query('size') size: 'thumbnails' | 'medium' | 'original' = 'medium',
+    @Res() res: Response,
+  ) {
+    // Validar que el size sea válido
+    const validSizes = ['thumbnails', 'medium', 'original'];
+    if (!validSizes.includes(size)) {
+      size = 'medium';
+    }
+
+    // Verificar que la imagen existe
+    if (!this.imageProcessingService.imageExists(filename, size)) {
+      throw new NotFoundException('Imagen no encontrada');
+    }
+
+    // Obtener ruta y enviar archivo
+    const imagePath = this.imageProcessingService.getImagePath(filename, size);
+    res.sendFile(imagePath);
+  }
 }
