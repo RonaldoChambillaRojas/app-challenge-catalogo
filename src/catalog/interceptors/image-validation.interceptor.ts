@@ -14,7 +14,7 @@ export class ImageValidationInterceptor implements NestInterceptor {
     const file = request.file;
 
     if (!file) {
-      throw new BadRequestException('No se ha proporcionado ninguna imagen');
+      return next.handle();
     }
 
     // Validar tipo MIME
