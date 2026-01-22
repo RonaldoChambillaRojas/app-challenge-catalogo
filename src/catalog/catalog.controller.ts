@@ -56,11 +56,6 @@ export class CatalogController {
     );
   }
 
-  /**
-   * POST /catalog/download-image
-   * Descargar imagen desde URL y asociarla a un producto
-   * Body: { imageUrl: "https://...", productId: 123 }
-   */
   @Post('download-image')
   async downloadImage(
     @Body() downloadImageDto: DownloadImageDto,
@@ -70,8 +65,6 @@ export class CatalogController {
       downloadImageDto.productId,
     );
   }
-
-  // ===== ENDPOINTS DE PRODUCTOS =====
 
   @Get('products/search')
   async searchProducts(
@@ -141,8 +134,6 @@ export class CatalogController {
   async generateProductCode(): Promise<GeneratedCode> {
     return this.catalogService.generateProductCode();
   }
-
-  // ===== ENDPOINTS DE IMÁGENES =====
 
   @Post('products/:id/image')
   @UseInterceptors(FileInterceptor('image'), ImageValidationInterceptor)
