@@ -16,6 +16,11 @@ export class CreateProductDto {
     @Type(() => Number)
     precio: number;
 
+
+    @IsOptional()
+    @IsString()
+    googleImageUrl?: string; // Nueva propiedad opcional
+
     // @IsString()
     // @IsOptional()
     // foto: string;
